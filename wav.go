@@ -87,6 +87,14 @@ func (w *Wareform) genSampleLine(lineNumPerSec int, drawFun func(line *plotter.X
 	if downtoss < 1 {
 		downtoss = 1
 	}
+	if downtoss > 4096 {
+		downtoss = downtoss / 4096 * 4096
+	} else if downtoss < 4096 {
+		for 4096%downtoss != 0 {
+			downtoss--
+		}
+	}
+
 	merge := int(math.Sqrt(scal/4) * 4)
 	if merge < 1 {
 		merge = 1
