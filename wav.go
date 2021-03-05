@@ -72,8 +72,8 @@ func (w *Wareform) GenWareform(path string) (err error) {
 	plo.HideY()
 	plo.X.Min = 0
 	plo.X.Max = float64(linecount)
-	plo.Y.Min = lower * 1.1
-	plo.Y.Max = uper * 1.1
+	plo.Y.Min = lower
+	plo.Y.Max = uper
 	plo.BackgroundColor = color.White
 
 	return plo.Save(vg.Points(float64(linecount)*4), 540, path)
