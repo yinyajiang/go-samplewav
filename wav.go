@@ -47,8 +47,8 @@ func (w *Wareform) AudioInfo() map[string]interface{} {
 	return ret
 }
 
-//GenSVGWareform ...
-func (w *Wareform) GenSVGWareform(path string) (err error) {
+//GenWareform .png or .svg
+func (w *Wareform) GenWareform(path string) (err error) {
 
 	plo, err := plot.New()
 	if err != nil {
