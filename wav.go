@@ -4,7 +4,8 @@ import (
 	"image/color"
 	"io"
 	"math"
-
+	"time"
+	"fmt"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	"gonum.org/v1/plot"
@@ -42,7 +43,7 @@ func (w *Wareform) AudioInfo() map[string]interface{} {
 	ret["NumChannels"] = uint(w.decoder.NumChans)
 	ret["SampleRate"] = uint(w.decoder.SampleRate)
 	dur, _ := w.decoder.Duration()
-	ret["Duration"] = dur
+	ret["Duration"] = int(dur / time.Millisecond)
 	ret["BitsPerSample"] = uint(w.decoder.SampleBitDepth())
 	return ret
 }
@@ -50,112 +51,97 @@ func (w *Wareform) AudioInfo() map[string]interface{} {
 //GenWareform .png or .svg
 func (w *Wareform) GenWareform(path string) (err error) {
 
-	plo, err := plot.New()
+	duration, err := w.decoder.Duration()
+	if err != nil {
+		return
+	}
+	dur := int(duration / time.Second)
+	if dur < 1 {
+		dur = 1
+	}
+	di := int(math.Log2(float64(dur)))
+	if di < 1 {
+		di = 1
+	}
+	linePerSec := 30 / di
+
+	space := float64(linePerSec*2)
+	if space < 1 {
+		space = 2
+	}
+
+	plo := plot.New()
 	if err != nil {
 		return
 	}
 
+	startColor := [4]float64{172, 185, 255, 255}
+	endColor := [4]float64{109, 129, 255, 255}
+	step := [4]float64{
+		(endColor[0] - startColor[0]) / float64(linePerSec) / float64(dur), //R
+		(endColor[1] - startColor[1]) / float64(linePerSec) / float64(dur), //G
+		(endColor[2] - startColor[2]) / float64(linePerSec) / float64(dur), //B
+		(endColor[3] - startColor[3]) / float64(linePerSec) / float64(dur), //A
+	}
+
 	linecount := 0
 	//不使用gorountine 和 chan，尽量提高效率
-	uper, lower := w.genSampleLine(10, func(line *plotter.XYs) {
+	uper := w.genSampleLine(linePerSec, space, func(line *plotter.XYs) {
 		linecount++
 		l, err := plotter.NewLine(line)
 		if err != nil {
+			fmt.Println(err)
 			return
 		}
-		l.LineStyle.Width = vg.Points(2)
-		l.Color = &color.RGBA{R: 50, G: uint8(155), B: 240, A: 255}
+		l.LineStyle.Width = vg.Points(space / 2)
+
+		R := startColor[0] + step[0]*float64(linecount)
+		G := startColor[1] + step[1]*float64(linecount)
+		B := startColor[2] + step[2]*float64(linecount)
+		A := startColor[3] + step[3]*float64(linecount)
+		
+		l.Color = &color.RGBA{R: uint8(R), G: uint8(G), B: uint8(B), A:uint8(A)}
 		plo.Add(l)
 	})
+	fmt.Println("linecount:",linecount)
 
 	plo.HideX()
 	plo.HideY()
 	plo.X.Min = 0
 	plo.X.Max = float64(linecount)
-	plo.Y.Min = lower
+	plo.Y.Min = 0
 	plo.Y.Max = uper
-	plo.BackgroundColor = color.White
+	plo.BackgroundColor = color.Transparent
 
 	return plo.Save(vg.Points(float64(linecount)*4), 540, path)
 }
 
-func (w *Wareform) genSampleLine(lineNumPerSec int, drawFun func(line *plotter.XYs)) (uper, lower float64) {
+func (w *Wareform) genSampleLine(lineNumPerSec int, space float64, drawFun func(line *plotter.XYs)) (uper float64) {
 
 	//缩放倍数
-	scal := float64(w.decoder.SampleRate) / float64(lineNumPerSec)
-	downtoss := int(math.Sqrt(scal / 4))
-	if downtoss < 1 {
-		downtoss = 1
+	downtoss := 1
+	if uint32(lineNumPerSec) <= w.decoder.SampleRate {
+		downtoss = int(float64(w.decoder.SampleRate) / float64(lineNumPerSec))
 	}
-	if downtoss > 4096 {
-		downtoss = downtoss / 4096 * 4096
-	} else if downtoss < 4096 {
-		for 4096%downtoss != 0 {
-			downtoss--
-		}
-	}
-
-	merge := int(math.Sqrt(scal/4) * 4)
-	if merge < 1 {
-		merge = 1
-	}
-	space := float64(1)
 
 	//mergef func
-	mergeTick := 0
-	isValid := false
-	max := float64(0)
-	min := float64(0)
 	x := 0 - space
-	_mergeFun := func(fd float64) {
-		mergeTick++
-		if !isValid {
-			if merge == 1 {
-				if fd > 0 {
-					max = fd
-					min = 0
-				} else if fd < 0 {
-					max = 0
-					min = fd
-				} else {
-					max = 0
-					min = 0
-				}
-			} else {
-				max = fd
-				min = fd
-			}
-			isValid = true
+	_draw := func(fd float64) {
+		if fd == 0 {
+			fd = 1.1
 		}
-
-		if max < fd {
-			max = fd
-		}
-		if min > fd {
-			min = fd
-		}
-		if mergeTick == merge {
-			if max == min {
-				max = min + 1
-			}
-			x += space
-			drawFun(&plotter.XYs{{X: x, Y: min}, {X: x, Y: max}})
-
-			if max > uper {
-				uper = max
-			}
-			if min < lower {
-				lower = min
-			}
-			mergeTick = 0
-			isValid = false
+		fd = math.Log2(fd)
+		x += space
+		drawFun(&plotter.XYs{{X: x, Y: fd}, {X: x, Y: 0}})
+		if fd > uper {
+			uper = fd
 		}
 	}
 
 	//readdata
 	bufSampleCount := downtoss
 	if bufSampleCount < 4096 {
-		bufSampleCount = 4096
+		bufSampleCount = 4096 / downtoss * downtoss
 	}
 	abuf := &audio.IntBuffer{Data: make([]int, bufSampleCount*int(w.decoder.NumChans))}
 	for {
@@ -168,15 +154,15 @@ func (w *Wareform) genSampleLine(lineNumPerSec int, drawFun func(line *plotter.X
 		//过滤信息
 		for i := 0; i < n; i += downtoss {
 			sampleStart := i * int(w.decoder.NumChans)
-			mergeVal := abuf.Data[sampleStart]
+			mergeVal := math.Abs(float64(abuf.Data[sampleStart]))
 
 			for j := 1; j < int(w.decoder.NumChans); j++ {
-				//多个声道合一，获取绝对值最大的
-				if math.Abs(float64(abuf.Data[sampleStart+j])) > math.Abs(float64(mergeVal)) {
-					mergeVal = abuf.Data[sampleStart+j]
-				}
+				//多个声道合-
+				mergeVal += math.Abs(float64(abuf.Data[sampleStart+j]))
 			}
-			_mergeFun(float64(mergeVal))
+
+			mergeVal /= float64(w.decoder.NumChans)
+			_draw(float64(mergeVal))
 		}
 	}
 	return
