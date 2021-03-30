@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"gonum.org/v1/plot"
-	"gonum.org/v1/plot/plotter"
-	"gonum.org/v1/plot/vg"
+	tools "github.com/yinyajiang/go-ytools/utils"
 )
 
 // WaveFormat wave format tag
@@ -63,16 +61,15 @@ func (w *Wareform) GenWareform(path string) (err error) {
 	if di < 1 {
 		di = 1
 	}
-	linePerSec := 30 / di
+	linePerSec := 40 / di
 
-	space := float64(linePerSec*2)
+	space := uint(linePerSec)
 	if space < 1 {
 		space = 2
 	}
-
-	plo := plot.New()
-	if err != nil {
-		return
+	lineWidth := space / 2
+	if space < 1 {
+		space = 1
 	}
 
 	startColor := [4]float64{172, 185, 255, 255}
@@ -85,38 +82,30 @@ func (w *Wareform) GenWareform(path string) (err error) {
 	}
 
 	linecount := 0
+
+	svg := &svgLinePrinter{}
 	//不使用gorountine 和 chan，尽量提高效率
-	uper := w.genSampleLine(linePerSec, space, func(line *plotter.XYs) {
+	w.genSampleLine(linePerSec, space, lineWidth, func(l *svgLine) {
 		linecount++
-		l, err := plotter.NewLine(line)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		l.LineStyle.Width = vg.Points(space / 2)
 
 		R := startColor[0] + step[0]*float64(linecount)
 		G := startColor[1] + step[1]*float64(linecount)
 		B := startColor[2] + step[2]*float64(linecount)
 		A := startColor[3] + step[3]*float64(linecount)
-		
-		l.Color = &color.RGBA{R: uint8(R), G: uint8(G), B: uint8(B), A:uint8(A)}
-		plo.Add(l)
+
+		l.rgba = &color.RGBA{R: uint8(R), G: uint8(G), B: uint8(B), A: uint8(A)}
+		svg.add(l)
 	})
-	fmt.Println("linecount:",linecount)
-
-	plo.HideX()
-	plo.HideY()
-	plo.X.Min = 0
-	plo.X.Max = float64(linecount)
-	plo.Y.Min = 0
-	plo.Y.Max = uper
-	plo.BackgroundColor = color.Transparent
-
-	return plo.Save(vg.Points(float64(linecount)*4), 540, path)
+	fmt.Println("linecount:", linecount)
+	f, err := tools.CreateFile(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	return svg.save(f)
 }
 
-func (w *Wareform) genSampleLine(lineNumPerSec int, space float64, drawFun func(line *plotter.XYs)) (uper float64) {
+func (w *Wareform) genSampleLine(lineNumPerSec int, space, lineWidth uint, drawFun func(line *svgLine)) {
 
 	//缩放倍数
 	downtoss := 1
@@ -125,17 +114,20 @@ func (w *Wareform) genSampleLine(lineNumPerSec int, space float64, drawFun func(
 	}
 
 	//mergef func
-	x := 0 - space
+	x := 0 - space - lineWidth
 	_draw := func(fd float64) {
 		if fd == 0 {
 			fd = 1.1
 		}
 		fd = math.Log2(fd)
-		x += space
-		drawFun(&plotter.XYs{{X: x, Y: fd}, {X: x, Y: 0}})
-		if fd > uper {
-			uper = fd
-		}
+		x += space + lineWidth
+		drawFun(&svgLine{
+			x1:    int64(x),
+			y1:    int64(0),
+			x2:    int64(x),
+			y2:    int64(fd) * 10,
+			width: lineWidth,
+		})
 	}
 
 	//readdata
