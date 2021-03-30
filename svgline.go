@@ -15,6 +15,7 @@ type svgLine struct {
 type svgLinePrinter struct {
 	buff                   string
 	minx, maxx, miny, maxy int64
+	lastwidth              int64
 }
 
 func (s *svgLinePrinter) add(line *svgLine) {
@@ -23,10 +24,11 @@ func (s *svgLinePrinter) add(line *svgLine) {
 	s.buff += "\n"
 	s.maxx, s.minx = maxAndMin(line.x1, line.x2, s.maxx, s.minx)
 	s.maxy, s.miny = maxAndMin(line.y1, line.y2, s.maxy, s.miny)
+	s.lastwidth = int64(line.width)
 }
 
 func (s *svgLinePrinter) save(w io.Writer) (err error) {
-	width := s.maxx - s.minx
+	width := s.maxx - s.minx + s.lastwidth
 	height := s.maxy - s.miny
 
 	doc := fmt.Sprintf(`<?xml version="1.0"?>
