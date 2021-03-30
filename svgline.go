@@ -19,8 +19,8 @@ type svgLinePrinter struct {
 }
 
 func (s *svgLinePrinter) add(line *svgLine) {
-	s.buff += fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" style="stroke:rgba(%d,%d,%d,%d);stroke-width:%d"/>`,
-		line.x1, line.y1, line.x2, line.y2, line.rgba.R, line.rgba.G, line.rgba.B, line.rgba.A, line.width)
+	s.buff += fmt.Sprintf(`<line x1="%d" y1="%d" x2="%d" y2="%d" style="stroke:#%x%x%x;stroke-width:%d"/>`,
+		line.x1, line.y1, line.x2, line.y2, line.rgba.R, line.rgba.G, line.rgba.B, line.width)
 	s.buff += "\n"
 	s.maxx, s.minx = maxAndMin(line.x1, line.x2, s.maxx, s.minx)
 	s.maxy, s.miny = maxAndMin(line.y1, line.y2, s.maxy, s.miny)
